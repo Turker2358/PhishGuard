@@ -41,6 +41,12 @@ src/phishing_detector/
 ├── models/                 # 公共数据结构
 ├── parser/                 # 邮件解析与标准化
 ├── detectors/              # 三个检测模块的公共接口
+│   └── content/            # 正文 LLM 检测模块
+│       ├── schemas.py      # LLM 结构化输出的数据模型/Schema
+│       ├── prompt.py       # 提示词构建（含提示注入防御）
+│       ├── parsing.py      # 解析并校验 LLM 返回的 JSON
+│       ├── client.py       # LLM 客户端抽象与 OpenAI 兼容实现
+│       └── llm_detector.py # 实现 Detector 协议的检测器
 └── aggregator/             # 风险分数聚合
 tests/
 ├── unit/                   # 单元测试
@@ -184,14 +190,32 @@ doc/
 
 ### 6.3 正文 LLM 检测
 
-至少识别：
+实现位置：`src/phishing_detector/detectors/content/`。输入为
+`headers.subject` 与 `body.llm_text`，通过 `ContentLLMDetector`（实现 `Detector`
+协议）调用 LLM。至少识别：
 
 - 索取账号、密码或验证码；
 - 异常付款、转账或退款；
 - 使用紧迫、威胁或中奖话术；
 - 冒充机构并诱导点击链接或下载附件。
 
-LLM 应返回结构化 JSON。邮件正文属于不可信数据，正文中的指令不能改变模型的检测任务。模型调用失败时返回 `unknown`，不能返回“安全”。
+设计要点：
+
+- **结构化输出**：提示词要求模型只返回一个 JSON 对象，`parse_analysis` 使用
+  Pydantic 严格校验 `ContentAnalysis`（含 `is_phishing`、`score`、`signals`）；
+  不执行模型返回的任何文本或代码。
+- **提示注入防御**：正文是不可信数据，用 `<email>…</email>` 定界放在用户消息中，
+  正文原文绝不进入系统消息；系统指令显式要求模型忽略正文内的一切指令、角色
+  设定与格式要求。
+- **失败兜底**：模型调用异常、超时、JSON 解析失败或未配置密钥时，一律返回
+  `failed` ＋ `verdict=unknown` ＋ `score=None`，绝不返回“正常”。模型判定
+  （`is_phishing`）与分数结论矛盾时降级为 `partial`。
+- **不泄露信息**：错误信息只给异常类型/简短描述，不包含密钥与完整正文。
+- **超时**：默认 15 秒（可用 `LLM_TIMEOUT_SECONDS`/`DETECTOR_TIMEOUT_SECONDS`
+  覆盖），在检测器层用 `asyncio.wait_for` 强制兜底。
+
+依赖第三方模型时只发送正文文本用于分析，不上传附件字节；密钥写在 `.env`
+（`LLM_MODEL`、`LLM_API_KEY`、`LLM_API_URL`），不提交到 Git。
 
 ## 7. 聚合规则
 
