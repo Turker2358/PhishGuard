@@ -1,0 +1,9 @@
+From: billing@example.com
+To: student@example.com
+Subject: Invoice portal demo
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>【课程模拟邮件】发票已更新，请在以下门户查看。</p>
+<a href="https://example.com.evil.test/invoice">https://example.com</a>
+</body></html>

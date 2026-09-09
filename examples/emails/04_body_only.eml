@@ -1,0 +1,8 @@
+From: teacher@example.com
+To: student@example.com
+Subject: Urgent transfer demo
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+【课程模拟邮件】我是你的老师，现在急需你帮忙转账。不要打电话确认，必须保密，立即回复你的银行卡密码和短信验证码，否则取消考试资格。
+此邮件不包含真实账户，仅用于测试正文社会工程识别。

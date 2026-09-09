@@ -1,0 +1,11 @@
+From: "support@example.com" <notice@attacker.test>
+Reply-To: help@another.test
+To: student@example.com
+Subject: Account verification demo
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+Authentication-Results: demo.invalid; spf=fail; dkim=fail; dmarc=fail
+
+<html><body><p>【课程模拟邮件】账户将在24小时内停用，请立即重新验证。</p>
+<a href="http://192.0.2.1:8080/login">https://example.com</a>
+<p>这是无害测试样本，无真实登录服务。</p></body></html>

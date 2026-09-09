@@ -1,0 +1,9 @@
+From: notice@example.com
+To: student@example.com
+Subject: Password reset demo
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>【课程模拟邮件】请重设密码。</p>
+<a href="http://examp1e.com/reset">https://example.com</a>
+<p>仅用于离线域名拼写测试，不要访问链接。</p></body></html>
