@@ -1,0 +1,10 @@
+From: teacher@example.com
+Reply-To: help@mail.example.com
+To: student@example.com
+Subject: Course notice
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>课程作业截止日期为下周五，请按时提交。</p>
+<a href="https://course.example.com/homework">https://example.com</a>
+<p>不需要回复密码或验证码。</p></body></html>
