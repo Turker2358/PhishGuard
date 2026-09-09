@@ -27,10 +27,22 @@ def _system_message() -> str:
         "- 要求异常付款、转账或退款；\n"
         "- 使用紧迫、威胁或中奖话术施加压力；\n"
         "- 冒充银行、平台或机构并诱导点击链接或下载附件。\n"
-        "只输出一个 JSON 对象，不要输出解释、Markdown 代码围栏或其他任何文本。\n"
-        "JSON 必须严格符合如下结构：\n"
+        "只输出一个 JSON 对象作为检测结果，不要输出解释、不要使用 Markdown 代码围栏，\n"
+        "不要复述下方 JSON Schema 定义，也不要输出任何其他文本。\n"
+        "输出必须符合如下字段约束：\n"
         f"{schema_text()}\n"
-        "score 取值 0～100，越大越可疑。signals 逐条列出命中的风险项；没有命中时返回空数组。"
+        "字段要求：\n"
+        "- is_phishing：布尔值，是否判定为钓鱼；\n"
+        "- score：0～100 的整数，越大越可疑；\n"
+        "- signals：风险项数组，最多 3 条，按严重程度从高到低排列；没有命中时返回空数组；\n"
+        "- reason：一句简短中文说明，不超过 30 字。\n"
+        "正常邮件结果示例：\n"
+        '{"is_phishing": false, "score": 10, "signals": [], "reason": "普通课程通知，无风险特征"}\n'
+        "恶意邮件结果示例：\n"
+        '{"is_phishing": true, "score": 92, "signals": [{"code": "REQUEST_CREDENTIALS", '
+        '"severity": "high", "confidence": 0.95, "description": "索取账号密码", '
+        '"evidence": "请登录重新验证密码"}], "reason": "冒充平台诱导验证以窃取凭证"}\n'
+        "你必须严格按照上述字段输出唯一的 JSON 对象作为完整响应。"
     )
 
 

@@ -3,17 +3,22 @@
 实现 `Detector` 协议，输入已标准化的邮件，构建提示词调用 LLM，并把切面
 "不泄露密钥与正文"、错误集中处理与失败兜底集中在此层。
 
-失败处理原则（与开发文档一致）：模型调用、超时或 JSON 解析失败均返回
-`status=failed`、`score=None`、`verdict=unknown`，绝不降级为"正常"。
+失败处理原则（与开发文档一致）：模型调用、超时、JSON 解析失败或输出被 token
+截断均返回 `status=failed`、`score=None`、`verdict=unknown`，绝不降级为
+"正常"。
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import Callable
 
-from phishing_detector.detectors.content.client import LLMClient
+from phishing_detector.detectors.content.client import (
+    LLMClient,
+    build_client_from_env,
+)
 from phishing_detector.detectors.content.parsing import InvalidContentResponse, parse_analysis
 from phishing_detector.detectors.content.prompt import Prompt, build_prompt
 from phishing_detector.models import (
@@ -29,7 +34,10 @@ logger = logging.getLogger(__name__)
 
 MODULE = DetectorModule.CONTENT
 DEFAULT_TIMEOUT = 15.0
-DEFAULT_MAX_TOKENS = 600
+DEFAULT_MAX_TOKENS = 1024
+
+# 截断标记：不同的 OpenAI 兼容服务可能使用 "length" 表示 token 耗尽。
+TRUNCATED_FINISH_REASONS = frozenset({"length"})
 
 
 def _verdict_from_score(score: int) -> Verdict:
@@ -78,7 +86,7 @@ class ContentLLMDetector:
             llm_text=parsed.body.llm_text,
         )
         try:
-            raw = await asyncio.wait_for(
+            completion = await asyncio.wait_for(
                 self.client.complete(
                     system=prompt.system,
                     user=prompt.user,
@@ -87,7 +95,16 @@ class ContentLLMDetector:
                 ),
                 timeout=self.timeout,
             )
-            analysis = parse_analysis(raw)
+            # 输出被截断：不解析不完整内容，作为失败处理，避免误判残缺结果。
+            if completion.finish_reason in TRUNCATED_FINISH_REASONS:
+                return DetectorResult(
+                    module=MODULE,
+                    status=DetectorStatus.FAILED,
+                    score=None,
+                    verdict=Verdict.UNKNOWN,
+                    errors=["LLM 输出被 token 预算截断，未完成"],
+                )
+            analysis = parse_analysis(completion.content)
         except Exception as exc:  # noqa: BLE001 - 任何异常一律按失败处理
             logger.warning("content LLM detection failed: %s", _safe_error(exc))
             return DetectorResult(
@@ -127,3 +144,30 @@ def _safe_error(exc: Exception) -> str:
     if isinstance(exc, asyncio.TimeoutError):
         return "LLM 检测超时"
     return f"LLM 检测失败（{type(exc).__name__}）"
+
+
+def _env_float(env: dict[str, str], name: str, default: float) -> float:
+    try:
+        return float(env[name])
+    except (KeyError, ValueError):
+        return default
+
+
+def _env_int(env: dict[str, str], name: str, default: int) -> int:
+    try:
+        return int(env[name])
+    except (KeyError, ValueError):
+        return default
+
+
+def build_detector_from_env(env: dict[str, str] | None = None) -> ContentLLMDetector | None:
+    """从环境构造正文 LLM 检测器；未配置密钥或模型时返回 `None`。"""
+    env = env or os.environ
+    client = build_client_from_env(env)
+    if client is None:
+        return None
+    return ContentLLMDetector(
+        client,
+        timeout=_env_float(env, "LLM_TIMEOUT_SECONDS", DEFAULT_TIMEOUT),
+        max_tokens=_env_int(env, "LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS),
+    )

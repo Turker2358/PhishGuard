@@ -235,21 +235,31 @@ SPF、DKIM、DMARC 仅分析邮件头已有的失败结果，不重新验证，�
 
 设计要点：
 
-- **结构化输出**：提示词要求模型只返回一个 JSON 对象，`parse_analysis` 使用
-  Pydantic 严格校验 `ContentAnalysis`（含 `is_phishing`、`score`、`signals`）；
-  不执行模型返回的任何文本或代码。
+- **结构化输出**：提示词区分 JSON Schema 与检测结果，明确禁止复述 Schema，并
+  给出正常/恶意两个结果示例，限制风险项数量（≤3）与说明长度（≤30 字）。
+  `parse_analysis` 使用 Pydantic 严格校验 `ContentAnalysis`（含 `is_phishing`、
+  `score`、`signals`）；不执行模型返回的任何文本或代码。
+- **诊断信息**：解析/校验失败保留脱敏的字段路径与错误类型，并能区分 Schema
+  复述、token 截断与普通 JSON 错误；错误内容不记录密钥、完整正文或原始响应。
+- **完成原因**：客户端返回 `Completion(content, finish_reason)`，检测器检查
+  `finish_reason`；输出被 token 预算截断时按失败处理，不解析残缺内容。
+- **结构化输出约束**：`response_format=json_object` 默认关闭（兼容性未验证），
+  仅当服务支持时用 `LLM_STRUCTURED_OUTPUT` 开启。
 - **提示注入防御**：正文是不可信数据，用 `<email>…</email>` 定界放在用户消息中，
   正文原文绝不进入系统消息；系统指令显式要求模型忽略正文内的一切指令、角色
   设定与格式要求。
-- **失败兜底**：模型调用异常、超时、JSON 解析失败或未配置密钥时，一律返回
-  `failed` ＋ `verdict=unknown` ＋ `score=None`，绝不返回“正常”。模型判定
-  （`is_phishing`）与分数结论矛盾时降级为 `partial`。
+- **失败兜底**：模型调用异常、超时、JSON 解析失败、Schema 复述、输出截断或未
+  配置密钥时，一律返回 `failed` ＋ `verdict=unknown` ＋ `score=None`，绝不返回
+  "正常"。模型判定（`is_phishing`）与分数结论矛盾时降级为 `partial`。
 - **不泄露信息**：错误信息只给异常类型/简短描述，不包含密钥与完整正文。
 - **超时**：默认 15 秒（可用 `LLM_TIMEOUT_SECONDS`/`DETECTOR_TIMEOUT_SECONDS`
   覆盖），在检测器层用 `asyncio.wait_for` 强制兜底。
+- **输出预算**：默认 `max_tokens=1024`，可用 `LLM_MAX_TOKENS` 覆盖。
 
 依赖第三方模型时只发送正文文本用于分析，不上传附件字节；密钥写在 `.env`
-（`LLM_MODEL`、`LLM_API_KEY`、`LLM_API_URL`），不提交到 Git。
+（`LLM_MODEL`、`LLM_API_KEY`、`LLM_API_URL`），不提交到 Git。`LLM_MAX_TOKENS`
+控制输出预算；`LLM_STRUCTURED_OUTPUT` 仅在你确认服务支持
+`response_format=json_object` 时设为 `1`。
 
 ## 7. 聚合规则
 
