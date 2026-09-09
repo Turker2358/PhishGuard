@@ -5,8 +5,9 @@ import asyncio
 from pathlib import Path
 
 from phishing_detector.aggregator import RiskAggregator
-from phishing_detector.detectors import ContentLLMDetector, PatternDetector
+from phishing_detector.detectors import ContentLLMDetector, PatternDetector,AttachmentDetector
 from phishing_detector.detectors.content import build_client_from_env
+from phishing_detector.detectors.attachment import build_hash_lookup_from_env
 from phishing_detector.parser import EmailStandardizer
 
 
@@ -19,9 +20,12 @@ def main() -> None:
     client = build_client_from_env() if args.llm else None
     if args.llm and client is None:
         parser.error("启用 LLM 需要设置 LLM_MODEL 和 LLM_API_KEY 环境变量")
+    
+    hash_lookup = build_hash_lookup_from_env()
 
     async def run() -> None:
         detector = PatternDetector(protected_domains=tuple(args.protect))
+        attachment_detector = AttachmentDetector(hash_lookup=hash_lookup)
         for path in args.files:
             try:
                 with path.open("rb") as stream:
@@ -29,7 +33,7 @@ def main() -> None:
                 standardized = EmailStandardizer().parse(raw)
             except (OSError, ValueError):
                 parser.error(f"无法读取或解析邮件：{path}")
-            results = [await detector.detect(standardized)]
+            results = [await detector.detect(standardized),await attachment_detector.detect(standardized)]
             if client is not None:
                 results.append(await ContentLLMDetector(client).detect(standardized))
             report = RiskAggregator().aggregate(results)
