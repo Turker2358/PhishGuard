@@ -41,6 +41,7 @@ src/phishing_detector/
 ├── models/                 # 公共数据结构
 ├── parser/                 # 邮件解析与标准化
 ├── detectors/              # 三个检测模块的公共接口
+│   ├── pattern.py          # 离线固定模式检测
 │   └── content/            # 正文 LLM 检测模块
 │       ├── schemas.py      # LLM 结构化输出的数据模型/Schema
 │       ├── prompt.py       # 提示词构建（含提示注入防御）
@@ -176,6 +177,39 @@ doc/
 - 双重或相似域名等简单伪造特征。
 
 单个规则只能作为风险证据，不应仅凭“使用 HTTP”直接判定邮件恶意。
+
+实现：`PatternDetector`，调用 `await detector.detect(standardized_email)`，返回公共
+`DetectorResult`。无需配置密钥，不发出网络请求。
+
+```python
+from phishing_detector.detectors import PatternDetector
+
+detector = PatternDetector(protected_domains=("example.com",))
+result = await detector.detect(standardized_email)
+```
+
+计分采用命中项相加，上限 100，同一规则无论命中多少次均只计一次：
+
+| 风险 | 分数 |
+| --- | --- |
+| 显示名称中的邮箱或配置机构与实际发件域名不符 | 35 |
+| From 与 Reply-To 域名不同 | 20 |
+| SPF / DKIM / DMARC 失败 | 15 / 15 / 25，认证类合计上限 25 |
+| 链接显示域名与目标不同 | 35 |
+| IP 链接 / 非默认端口 / 常见短链 | 15 / 10 / 10 |
+| HTTP / URL 用户名混淆 / 格式异常 | 5 / 20 / 10 |
+| 受保护域名嵌入其他域名 / 相似拼写 | 35 / 25 |
+
+分级沿用 35、70 两个阈值。域名统一大小写、末尾点及 IDNA；显示文本只有在
+是完整 URL 或裸域名时才比较。发件/回复地址及显示/目标链接使用注册域名比较，
+合法跨域跳转可以配置定向域名对。相似拼写按字符串相似度至少 0.85 判断，仅检查传入的
+`protected_domains`；该列表默认为空，合法子域名不触发保护规则。
+
+SPF、DKIM、DMARC 仅分析邮件头已有的失败结果，不重新验证，也不能保证认证头
+真实可信；缺失或通过不加分。证据仅记录规则事实和端口，不输出完整邮箱或 URL。
+固定模式完全离线，因此测试覆盖格式异常即可，无外部服务失败场景。
+
+完整规则、配置示例及限制见 [固定模式检测说明](PATTERN_DETECTION.md)。
 
 ### 6.2 附件安全检测
 
