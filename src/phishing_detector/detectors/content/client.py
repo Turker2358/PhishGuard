@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -50,12 +51,16 @@ class OpenAICompatClient:
         base_url: str = "https://api.openai.com/v1",
         connect_timeout: float = 10.0,
         structured_output: bool = False,
+        max_transient_retries: int = 1,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.connect_timeout = connect_timeout
         self.structured_output = structured_output
+        self.max_transient_retries = max_transient_retries
+        self.transport = transport
 
     async def complete(
         self, *, system: str, user: str, timeout: float, max_tokens: int
@@ -73,14 +78,33 @@ class OpenAICompatClient:
         if self.structured_output:
             payload["response_format"] = {"type": "json_object"}
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=self.connect_timeout)) as client:  # noqa: E501
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
+
+        # 对瞬时故障（连接中断、5xx）做有限重试；而 4xx（如网关拒绝请求内容）是
+        # 确定性失败，不重试。
+        last_exc: Exception | None = None
+        for attempt in range(self.max_transient_retries + 1):
+            try:
+                data = await self._post_chat(
+                    payload=payload,
+                    headers=headers,
+                    timeout=httpx.Timeout(timeout, connect=self.connect_timeout),
+                )
+                break
+            except httpx.HTTPStatusError as exc:
+                if (
+                    not (500 <= exc.response.status_code < 600)
+                    or attempt >= self.max_transient_retries
+                ):
+                    raise
+                last_exc = exc
+            except httpx.TransportError as exc:
+                if attempt >= self.max_transient_retries:
+                    raise
+                last_exc = exc
+            await asyncio.sleep(0.5 * (attempt + 1))
+        if data is None:
+            raise last_exc or RuntimeError("LLM 响应为空")
+
         choices = data.get("choices", [])
         if not choices:
             raise RuntimeError("LLM 响应缺少 choices")
@@ -90,6 +114,22 @@ class OpenAICompatClient:
             raise RuntimeError("LLM 响应缺少 content")
         finish_reason = choices[0].get("finish_reason")
         return Completion(content=content, finish_reason=finish_reason)
+
+    async def _post_chat(
+        self,
+        *,
+        payload: dict[str, Any],
+        headers: dict[str, str],
+        timeout: httpx.Timeout,
+    ) -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=timeout, transport=self.transport) as client:
+            response = await client.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            return response.json()
 
 
 def build_client_from_env(env: dict[str, str] | None = None) -> LLMClient | None:

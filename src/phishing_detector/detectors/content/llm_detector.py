@@ -15,6 +15,8 @@ import logging
 import os
 from collections.abc import Callable
 
+import httpx
+
 from phishing_detector.detectors.content.client import (
     LLMClient,
     build_client_from_env,
@@ -141,8 +143,13 @@ def _safe_error(exc: Exception) -> str:
     """把异常转换成不含密钥与完整正文的简短描述。"""
     if isinstance(exc, InvalidContentResponse):
         return str(exc)
-    if isinstance(exc, asyncio.TimeoutError):
+    if isinstance(exc, (asyncio.TimeoutError, httpx.TimeoutException)):
         return "LLM 检测超时"
+    # httpx.HTTPStatusError 的响应本身不含密钥；只上报状态码以区分拒绝/服务错误。
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"LLM 服务响应异常（HTTP {exc.response.status_code}）"
+    if isinstance(exc, httpx.HTTPError):
+        return f"LLM 服务连接异常（{type(exc).__name__}）"
     return f"LLM 检测失败（{type(exc).__name__}）"
 
 

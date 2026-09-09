@@ -255,6 +255,8 @@ SPF、DKIM、DMARC 仅分析邮件头已有的失败结果，不重新验证，�
 - **超时**：默认 15 秒（可用 `LLM_TIMEOUT_SECONDS`/`DETECTOR_TIMEOUT_SECONDS`
   覆盖），在检测器层用 `asyncio.wait_for` 强制兜底。
 - **输出预算**：默认 `max_tokens=1024`，可用 `LLM_MAX_TOKENS` 覆盖。
+- **瞬时故障重试**：连接中断或 5xx 服务错误自动重试（默认 1 次，`max_transient_retries`），
+  确定性 4xx（如网关拒绝请求内容）不重试。
 
 依赖第三方模型时只发送正文文本用于分析，不上传附件字节；密钥写在 `.env`
 （`LLM_MODEL`、`LLM_API_KEY`、`LLM_API_URL`），不提交到 Git。`LLM_MAX_TOKENS`

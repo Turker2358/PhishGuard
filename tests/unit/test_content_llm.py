@@ -277,3 +277,57 @@ def test_prompt_includes_result_examples_not_just_schema() -> None:
     # 限制风险项数量与说明长度。
     assert "最多 3 条" in prompt.system
     assert "30 字" in prompt.system
+
+
+def test_http_status_error_gets_sanitized_status() -> None:
+    # 网关拒绝请求（400）或服务错误（5xx）都要保留脱敏状态码诊断。
+    import httpx
+    from httpx import Request, Response
+
+    from phishing_detector.detectors.content.llm_detector import _safe_error
+
+    req = Request("POST", "https://cn2.su8.codes/v1/chat/completions")
+    err400 = httpx.HTTPStatusError(
+        "bad request", request=req, response=Response(400, request=req)
+    )
+    assert "400" in _safe_error(err400)
+    # 不泄露响应正文。
+    assert "safety" not in _safe_error(err400).lower()
+
+
+def test_retry_survives_transient_connection_error() -> None:
+    import asyncio
+
+    import httpx
+
+    requests = []
+
+    def handler(request):
+        requests.append(request.url.path)
+        if len(requests) == 1:
+            raise httpx.RemoteProtocolError("server disconnected")
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"is_phishing": true, "score": 90}'
+                        },
+                        "finish_reason": "stop",
+                    }
+                ]
+            },
+        )
+
+    client = OpenAICompatClient(
+        api_key="k",
+        model="m",
+        base_url="http://test/v1",
+        transport=httpx.MockTransport(handler),
+    )
+    result = asyncio.run(
+        client.complete(system="s", user="u", timeout=5, max_tokens=100)
+    )
+    assert result.content
+    assert len(requests) == 2  # 第一次连接失败，重试后成功
