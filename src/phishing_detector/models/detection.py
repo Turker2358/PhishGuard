@@ -50,6 +50,7 @@ class RiskSignal(Model):
 class DetectorResult(Model):
     module: DetectorModule
     status: DetectorStatus
+    applicable: bool = True
     score: int | None = Field(default=None, ge=0, le=100)
     verdict: Verdict
     signals: list[RiskSignal] = Field(default_factory=list)

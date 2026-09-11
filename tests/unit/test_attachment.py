@@ -3,6 +3,8 @@
 import asyncio
 import hashlib
 
+import pytest
+
 from phishing_detector.detectors.attachment import AttachmentDetector
 from phishing_detector.detectors.attachment.hash_lookup import HashLookupResult
 from phishing_detector.models import (
@@ -60,6 +62,7 @@ def test_no_attachment_is_benign() -> None:
     assert result.module == DetectorModule.ATTACHMENT
     assert result.status == DetectorStatus.SUCCESS
     assert result.score == 0
+    assert result.applicable is False
     assert result.verdict == Verdict.BENIGN
 
 
@@ -97,8 +100,43 @@ def test_macro_document_is_suspicious() -> None:
 
 
 def test_pdf_exe_mime_mismatch() -> None:
-    email = standardized_attachment("invoice.pdf", declared_mime="application/pdf", content=b"MZ malware")
+    email = standardized_attachment(
+        "invoice.pdf", declared_mime="application/pdf", content=b"MZ malware"
+    )
     email.email.attachments[0].detected_mime = "application/x-dosexec"
     result = asyncio.run(AttachmentDetector().detect(email))
     assert result.score >= 55
     assert any(signal.code == "MIME_MISMATCH" for signal in result.signals)
+
+
+@pytest.mark.parametrize("mime", ["application/x-dosexec", "application/octet-stream"])
+def test_executable_bytes_disguised_as_pdf(mime):
+    from email.message import EmailMessage
+
+    from phishing_detector.parser import EmailStandardizer
+
+    message = EmailMessage()
+    message.set_content("无害附件回归测试")
+    main, sub = mime.split("/")
+    message.add_attachment(
+        b"MZ harmless test bytes", maintype=main, subtype=sub, filename="invoice.pdf"
+    )
+    email = EmailStandardizer().parse(message.as_bytes())
+    result = asyncio.run(AttachmentDetector().detect(email))
+    assert result.score == 65
+    assert any(s.code == "DANGEROUS_FILE_TYPE" for s in result.signals)
+    assert result.status == DetectorStatus.PARTIAL
+
+
+@pytest.mark.parametrize("status", ["unavailable", "error", "not_found"])
+def test_incomplete_hash_lookup_is_partial(status):
+    lookup = FakeLookup(HashLookupResult(status=status))
+    result = asyncio.run(AttachmentDetector(lookup).detect(standardized_attachment("notes.txt")))
+    assert result.status == DetectorStatus.PARTIAL
+    assert result.errors
+
+
+def test_missing_hash_config_is_partial():
+    result = asyncio.run(AttachmentDetector().detect(standardized_attachment("notes.txt")))
+    assert result.status == DetectorStatus.PARTIAL
+    assert result.errors
