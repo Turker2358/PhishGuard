@@ -38,7 +38,8 @@ def test_cli_runs_and_reports_missing_modules():
     assert result.returncode == 0
     assert '"score": 100' in result.stdout
     assert '"status": "partial"' in result.stdout
-    assert "附件检测结果缺失" in result.stdout
+    # 不带 --llm 时不运行正文 LLM 检测，因此缺少正文模块结果（附件与固定模式正常执行）。
+    assert "正文检测结果缺失" in result.stdout
 
 
 def test_cli_missing_file():

@@ -5,9 +5,9 @@ import asyncio
 from pathlib import Path
 
 from phishing_detector.aggregator import RiskAggregator
-from phishing_detector.detectors import ContentLLMDetector, PatternDetector,AttachmentDetector
-from phishing_detector.detectors.content import build_client_from_env
+from phishing_detector.detectors import AttachmentDetector, PatternDetector
 from phishing_detector.detectors.attachment import build_hash_lookup_from_env
+from phishing_detector.detectors.content import build_detector_from_env
 from phishing_detector.parser import EmailStandardizer
 
 
@@ -17,10 +17,10 @@ def main() -> None:
     parser.add_argument("--protect", action="append", default=[], help="受保护域名，可重复指定")
     parser.add_argument("--llm", action="store_true", help="将正文发送给已配置的 LLM 进行检测")
     args = parser.parse_args()
-    client = build_client_from_env() if args.llm else None
-    if args.llm and client is None:
+    llm_detector = build_detector_from_env() if args.llm else None
+    if args.llm and llm_detector is None:
         parser.error("启用 LLM 需要设置 LLM_MODEL 和 LLM_API_KEY 环境变量")
-    
+
     hash_lookup = build_hash_lookup_from_env()
 
     async def run() -> None:
@@ -33,9 +33,12 @@ def main() -> None:
                 standardized = EmailStandardizer().parse(raw)
             except (OSError, ValueError):
                 parser.error(f"无法读取或解析邮件：{path}")
-            results = [await detector.detect(standardized),await attachment_detector.detect(standardized)]
-            if client is not None:
-                results.append(await ContentLLMDetector(client).detect(standardized))
+            results = [
+                await detector.detect(standardized),
+                await attachment_detector.detect(standardized),
+            ]
+            if llm_detector is not None:
+                results.append(await llm_detector.detect(standardized))
             report = RiskAggregator().aggregate(results)
             print(f"=== {path.name} ===")
             print(report.model_dump_json(indent=2))
