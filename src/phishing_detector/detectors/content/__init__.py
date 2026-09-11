@@ -8,11 +8,15 @@ from phishing_detector.detectors.content.client import (
     OpenAICompatClient,
     build_client_from_env,
 )
-from phishing_detector.detectors.content.llm_detector import ContentLLMDetector
+from phishing_detector.detectors.content.llm_detector import (
+    ContentLLMDetector,
+    build_detector_from_env,
+)
 
 __all__ = [
     "ContentLLMDetector",
     "LLMClient",
     "OpenAICompatClient",
     "build_client_from_env",
+    "build_detector_from_env",
 ]

@@ -66,6 +66,13 @@ SCHEMA_OBJECT = {
 }
 
 
+# 检测结果对象允许的顶层字段，用于识别模型是否复述 Schema。
+RESULT_FIELDS = frozenset(ContentAnalysis.model_fields)
+
+# JSON Schema 关键字，出现在顶层且缺少结果字段时视为 Schema 复述。
+SCHEMA_KEYWORDS = frozenset({"type", "properties", "required", "$schema", "items"})
+
+
 def schema_text() -> str:
     """渲染成可直接放入提示词的 JSON。"""
     from json import dumps
