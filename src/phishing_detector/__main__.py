@@ -12,7 +12,7 @@ from phishing_detector.parser import EmailStandardizer
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="检测 .eml 邮件，默认仅运行离线固定模式检测")
+    parser = argparse.ArgumentParser(description="检测 .eml 邮件，默认运行固定模式和附件检测")
     parser.add_argument("files", nargs="+", type=Path, help="一个或多个 .eml 文件")
     parser.add_argument("--protect", action="append", default=[], help="受保护域名，可重复指定")
     parser.add_argument("--llm", action="store_true", help="将正文发送给已配置的 LLM 进行检测")

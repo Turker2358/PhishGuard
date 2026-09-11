@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-
 from phishing_detector.detectors.attachment.file_types import (
     get_extension,
     has_double_extension,
@@ -48,6 +46,7 @@ class AttachmentDetector:
             return DetectorResult(
                 module=MODULE,
                 status=DetectorStatus.SUCCESS,
+                applicable=False,
                 score=0,
                 verdict=Verdict.BENIGN,
             )
@@ -56,13 +55,13 @@ class AttachmentDetector:
         score = 0
         lookup_unavailable = False
         lookup_failed = False
+        lookup_unknown = False
 
         for attachment in attachments:
             filename = attachment.filename
             extension = get_extension(filename)
-            content = email.get_attachment_content(attachment.content_ref)
-
-            if is_dangerous_extension(filename):
+            executable = attachment.detected_mime in {"application/x-dosexec", "application/x-elf"}
+            if is_dangerous_extension(filename) or executable:
                 points = 65
                 score = max(score, points)
                 signals.append(
@@ -70,8 +69,8 @@ class AttachmentDetector:
                         code="DANGEROUS_FILE_TYPE",
                         severity=Severity.HIGH,
                         confidence=0.95,
-                        description="附件属于高风险可执行或脚本文件",
-                        evidence=f"{filename} ({extension})",
+                        description="附件扩展名或真实文件签名属于可执行或脚本类型",
+                        evidence=f"{filename} ({extension}, {attachment.detected_mime})",
                     )
                 )
 
@@ -160,16 +159,20 @@ class AttachmentDetector:
                 lookup_unavailable = True
             elif lookup.status == "error":
                 lookup_failed = True
+            elif lookup.status == "not_found":
+                lookup_unknown = True
 
         errors = []
         if lookup_unavailable:
             errors.append("未配置哈希信誉查询 API，仅执行本地附件检测")
         if lookup_failed:
             errors.append("部分附件哈希信誉查询失败")
+        if lookup_unknown:
+            errors.append("部分附件哈希未收录，无法确定其信誉")
 
         return DetectorResult(
             module=MODULE,
-            status=DetectorStatus.SUCCESS,
+            status=DetectorStatus.PARTIAL if errors else DetectorStatus.SUCCESS,
             score=min(score, 100),
             verdict=verdict_from_score(min(score, 100)),
             signals=signals,

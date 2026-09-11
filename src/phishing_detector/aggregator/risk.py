@@ -37,6 +37,7 @@ class RiskAggregator:
             module: result
             for module, result in result_map.items()
             if result.status != DetectorStatus.FAILED
+            and result.applicable
             and result.verdict != Verdict.UNKNOWN
             and result.score is not None
         }
@@ -61,9 +62,17 @@ class RiskAggregator:
         if any(signal.code == "KNOWN_MALICIOUS_HASH" for signal in signals):
             score = max(score, 70)
 
+        # 零分表示未命中该类特征，不能抵消其他模块已经发现的风险。
+        highest = max(result.score for result in usable.values())
+        if highest >= 70:
+            score = max(score, 70)
+        elif highest >= 35:
+            score = max(score, 35)
+
         verdict = self._verdict(score)
-        complete = set(usable) == set(DetectorModule) and all(
-            result.status == DetectorStatus.SUCCESS for result in usable.values()
+        complete = set(result_map) == set(DetectorModule) and all(
+            result.status == DetectorStatus.SUCCESS and result.verdict != Verdict.UNKNOWN
+            for result in result_map.values()
         )
         reasons = "；".join(signal.description for signal in signals[:3])
         summary = f"综合检测结论为{self._verdict_label(verdict)}"
@@ -111,4 +120,6 @@ class RiskAggregator:
                 warnings.append(f"{labels[module]}检测结果缺失")
             elif result.status != DetectorStatus.SUCCESS:
                 warnings.append(f"{labels[module]}检测不完整")
+            elif result.verdict == Verdict.UNKNOWN:
+                warnings.append(f"{labels[module]}检测无法给出结论")
         return warnings

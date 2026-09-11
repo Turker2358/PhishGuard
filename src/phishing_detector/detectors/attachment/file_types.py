@@ -3,9 +3,20 @@
 from pathlib import PurePath
 
 DANGEROUS_EXTENSIONS = {
-    ".exe", ".dll", ".scr", ".com", ".msi",
-    ".bat", ".cmd", ".vbs", ".vbe", ".js", ".jse",
-    ".ps1", ".hta", ".lnk",
+    ".exe",
+    ".dll",
+    ".scr",
+    ".com",
+    ".msi",
+    ".bat",
+    ".cmd",
+    ".vbs",
+    ".vbe",
+    ".js",
+    ".jse",
+    ".ps1",
+    ".hta",
+    ".lnk",
 }
 
 MACRO_EXTENSIONS = {".docm", ".xlsm", ".pptm"}
@@ -36,7 +47,16 @@ def has_double_extension(filename: str) -> bool:
     if len(parts) < 3:
         return False
     return f".{parts[-1]}" in DANGEROUS_EXTENSIONS and parts[-2] in {
-        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "jpg", "png"
+        "pdf",
+        "doc",
+        "docx",
+        "xls",
+        "xlsx",
+        "ppt",
+        "pptx",
+        "txt",
+        "jpg",
+        "png",
     }
 
 
